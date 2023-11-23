@@ -1,0 +1,28 @@
+[package]
+name = "leptos-webtransport"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.75"
+js-sys = "0.3.65"
+leptos = "0.5"
+log = "0.4.20"
+thiserror = "1.0.50"
+wasm-bindgen = "=0.2.88"
+wasm-bindgen-futures = "0.4.38"
+web-sys = {version = "0.3.64", features = [ "WebSocket", "WebTransport", "WritableStream", "ReadableStream", "ReadableStreamDefaultReader", "ReadableStreamReadResult", "WebTransportSendStream", "WritableStreamDefaultWriter", "WebTransportDatagramDuplexStream", "WebTransportCloseInfo", "WebTransportBidirectionalStream", "WebTransportReceiveStream"]}
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.37"
+
+# Defines a size-optimized profile for the WASM bundle in release mode
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.docs.rs]
+rustc-args = ["--cfg", "web_sys_unstable_apis"]

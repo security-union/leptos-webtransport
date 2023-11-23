@@ -1,0 +1,10 @@
+{
+  "goog:chromeOptions": {
+    "args": [
+      "--verbose",
+      "--enable-logging",
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream"
+    ]
+  }
+}
