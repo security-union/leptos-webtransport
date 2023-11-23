@@ -25,11 +25,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
 use anyhow::{anyhow, Error};
-use leptos::{create_signal, SignalUpdate, SignalGet, RwSignal};
+use leptos::{create_signal, RwSignal, SignalGet, SignalUpdate};
+use log::{debug, error, info};
 use std::{fmt, rc::Rc};
 use thiserror::Error as ThisError;
 use wasm_bindgen_futures::JsFuture;
-use log::{info, debug, error};
 
 use js_sys::{Boolean, JsString, Promise, Reflect, Uint8Array};
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
@@ -88,20 +88,14 @@ pub enum WebTransportError {
 #[must_use = "the connection will be closed when the task is dropped"]
 pub struct WebTransportTask {
     pub transport: Rc<WebTransport>,
-    notification: RwSignal<WebTransportStatus>,
     #[allow(dead_code)]
     listeners: [Promise; 2],
 }
 
 impl WebTransportTask {
-    fn new(
-        transport: Rc<WebTransport>,
-        notification: RwSignal<WebTransportStatus>,
-        listeners: [Promise; 2],
-    ) -> WebTransportTask {
+    fn new(transport: Rc<WebTransport>, listeners: [Promise; 2]) -> WebTransportTask {
         WebTransportTask {
             transport,
-            notification,
             listeners,
         }
     }
@@ -147,7 +141,7 @@ impl WebTransportService {
             on_bidirectional_stream,
         );
 
-        Ok(WebTransportTask::new(transport, notification, listeners))
+        Ok(WebTransportTask::new(transport, listeners))
     }
 
     fn start_listening_incoming_unidirectional_streams(
@@ -274,15 +268,14 @@ impl WebTransportService {
             WebTransportError::CreationError(format!("Failed to create WebTransport: {e:?}"))
         })?;
 
-        let notify = notification.clone();
-
+        let notify = *notification;
         let closure = Closure::wrap(Box::new(move |_| {
             notify.update(|x| *x = WebTransportStatus::Opened);
         }) as Box<dyn FnMut(JsValue)>);
         let ready = transport.ready().then(&closure);
         closure.forget();
 
-        let notify = notification.clone();
+        let notify = *notification;
         let closed_closure = Closure::wrap(Box::new(move |e| {
             info!("WebTransport closed: {:?}", e);
             notify.update(|x| *x = WebTransportStatus::Closed);
@@ -397,7 +390,9 @@ impl WebTransportTask {
                             }
                         }
                     }
-                    sender.update(|x| { *x = true; });
+                    sender.update(|x| {
+                        *x = true;
+                    });
                 });
                 let writer = stream
                     .writable()
@@ -431,12 +426,11 @@ impl Drop for WebTransportTask {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use js_sys::Function;
+    use leptos::{create_runtime, create_rw_signal};
     use wasm_bindgen::prelude::wasm_bindgen;
-    use leptos::{create_rw_signal, create_runtime};
     use wasm_bindgen_test::*;
     wasm_bindgen_test_configure!(run_in_browser);
     use super::*;
@@ -466,15 +460,17 @@ mod test {
         let data: Vec<u8> = Vec::new();
         let on_datagram = RwSignal::new(data);
         let on_unidirectional_stream = create_rw_signal::<Option<WebTransportReceiveStream>>(None);
-        let on_bidirectional_stream = create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
+        let on_bidirectional_stream =
+            create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
         let notification = create_rw_signal(WebTransportStatus::Closed);
-        let transport = WebTransportService::connect(
+        let _transport = WebTransportService::connect(
             "https://transport.rustlemania.com",
             on_datagram,
             on_unidirectional_stream,
             on_bidirectional_stream,
             notification,
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[wasm_bindgen_test]
@@ -483,15 +479,17 @@ mod test {
         let data: Vec<u8> = Vec::new();
         let on_datagram = RwSignal::new(data);
         let on_unidirectional_stream = create_rw_signal::<Option<WebTransportReceiveStream>>(None);
-        let on_bidirectional_stream = create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
+        let on_bidirectional_stream =
+            create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
         let notification = create_rw_signal(WebTransportStatus::Closed);
-        let transport = WebTransportService::connect(
+        let _transport = WebTransportService::connect(
             "https://transport.rustlemania.com",
             on_datagram,
             on_unidirectional_stream,
             on_bidirectional_stream,
             notification,
-        ).unwrap();
+        )
+        .unwrap();
         // TODO: how to wait until we connect?
         // let js_function = Closure::wrap(Box::new(|param: JsValue| {
         //     // This is the body of your JavaScript function
