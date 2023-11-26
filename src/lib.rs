@@ -26,7 +26,6 @@ SOFTWARE.
  */
 use anyhow::{anyhow, Error};
 use leptos::{create_signal, ReadSignal, SignalGet, SignalUpdate, WriteSignal};
-use log::{debug, error, info};
 use std::{fmt, rc::Rc};
 use thiserror::Error as ThisError;
 use wasm_bindgen_futures::JsFuture;
@@ -172,16 +171,16 @@ impl WebTransportService {
         incoming_streams: ReadableStream,
         stream_signal: WriteSignal<Option<WebTransportReceiveStream>>,
     ) {
-        info!("waiting for unidirectional streams");
+        println!("waiting for unidirectional streams");
         let read_result: ReadableStreamDefaultReader =
             incoming_streams.get_reader().unchecked_into();
         wasm_bindgen_futures::spawn_local(async move {
             loop {
                 let read_result = JsFuture::from(read_result.read()).await;
-                info!("got unidirectional stream");
+                println!("got unidirectional stream");
                 match read_result {
                     Err(e) => {
-                        error!("Failed to read incoming unidirectional streams {e:?}");
+                        eprintln!("Failed to read incoming unidirectional streams {e:?}");
                         let mut reason = WebTransportCloseInfo::default();
                         reason.reason(
                             format!("Failed to read incoming unidirectional strams {e:?}").as_str(),
@@ -190,7 +189,6 @@ impl WebTransportService {
                         break;
                     }
                     Ok(result) => {
-                        debug!("got result");
                         let done = Reflect::get(&result, &JsString::from("done"))
                             .unwrap()
                             .unchecked_into::<Boolean>();
@@ -199,7 +197,7 @@ impl WebTransportService {
                             stream_signal.update(|x| *x = Some(value));
                         }
                         if done.is_truthy() {
-                            info!("reading is over");
+                            println!("reading is over");
                             break;
                         }
                     }
@@ -247,15 +245,15 @@ impl WebTransportService {
         streams: ReadableStream,
         stream_signal: WriteSignal<Option<WebTransportBidirectionalStream>>,
     ) {
-        info!("waiting for bidirectional streams");
+        println!("waiting for bidirectional streams");
         let read_result: ReadableStreamDefaultReader = streams.get_reader().unchecked_into();
         wasm_bindgen_futures::spawn_local(async move {
             loop {
                 let read_result = JsFuture::from(read_result.read()).await;
-                info!("got bidirectional stream");
+                println!("got bidirectional stream");
                 match read_result {
                     Err(e) => {
-                        info!("Failed to read incoming unidirectional streams {e:?}");
+                        println!("Failed to read incoming unidirectional streams {e:?}");
                         let mut reason = WebTransportCloseInfo::default();
                         reason.reason(
                             format!("Failed to read incoming unidirectional strams {e:?}").as_str(),
@@ -264,7 +262,7 @@ impl WebTransportService {
                         break;
                     }
                     Ok(result) => {
-                        info!("got result");
+                        println!("got result");
                         let done = Reflect::get(&result, &JsString::from("done"))
                             .unwrap()
                             .unchecked_into::<Boolean>();
@@ -273,7 +271,7 @@ impl WebTransportService {
                             stream_signal.update(|x| *x = Some(value));
                         }
                         if done.is_truthy() {
-                            info!("reading is over");
+                            println!("reading is over");
                             break;
                         }
                     }
@@ -300,7 +298,7 @@ impl WebTransportService {
 
         let notify = *notification;
         let closed_closure = Closure::wrap(Box::new(move |e| {
-            info!("WebTransport closed: {:?}", e);
+            println!("WebTransport closed: {:?}", e);
             notify.update(|x| *x = WebTransportStatus::Closed);
         }) as Box<dyn FnMut(JsValue)>);
         let closed = transport.closed().then(&closed_closure);
@@ -339,7 +337,7 @@ impl WebTransportTask {
             .await;
             if let Err(e) = result {
                 let e = e.to_string();
-                info!("error: {}", e);
+                println!("error: {}", e);
             }
         });
     }
@@ -366,7 +364,7 @@ impl WebTransportTask {
             .await;
             if let Err(e) = result {
                 let e = e.to_string();
-                info!("error: {}", e);
+                println!("error: {}", e);
             }
         });
     }
@@ -437,7 +435,7 @@ impl WebTransportTask {
             .await;
             if let Err(e) = result {
                 let e = e.to_string();
-                info!("error: {}", e);
+                println!("error: {}", e);
             }
         });
     }
