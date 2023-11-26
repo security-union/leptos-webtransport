@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
  */
 use anyhow::{anyhow, Error};
-use leptos::{create_signal, RwSignal, SignalGet, SignalUpdate};
+use leptos::{create_signal, ReadSignal, SignalGet, SignalUpdate, WriteSignal};
 use log::{debug, error, info};
 use std::{fmt, rc::Rc};
 use thiserror::Error as ThisError;
@@ -86,16 +86,32 @@ pub enum WebTransportError {
 
 /// A handle to control the WebTransport connection. Implements `Task` and could be canceled.
 #[must_use = "the connection will be closed when the task is dropped"]
+#[derive(Clone)]
 pub struct WebTransportTask {
-    pub transport: Rc<WebTransport>,
+    pub datagram: ReadSignal<Vec<u8>>,
+    pub unidirectional_stream: ReadSignal<Option<WebTransportReceiveStream>>,
+    pub bidirectional_stream: ReadSignal<Option<WebTransportBidirectionalStream>>,
+    pub status: ReadSignal<WebTransportStatus>,
+    transport: Rc<WebTransport>,
     #[allow(dead_code)]
     listeners: [Promise; 2],
 }
 
 impl WebTransportTask {
-    fn new(transport: Rc<WebTransport>, listeners: [Promise; 2]) -> WebTransportTask {
+    fn new(
+        transport: Rc<WebTransport>,
+        datagram: ReadSignal<Vec<u8>>,
+        unidirectional_stream: ReadSignal<Option<WebTransportReceiveStream>>,
+        bidirectional_stream: ReadSignal<Option<WebTransportBidirectionalStream>>,
+        status: ReadSignal<WebTransportStatus>,
+        listeners: [Promise; 2],
+    ) -> WebTransportTask {
         WebTransportTask {
             transport,
+            datagram,
+            unidirectional_stream,
+            bidirectional_stream,
+            status,
             listeners,
         }
     }
@@ -114,40 +130,47 @@ pub struct WebTransportService {}
 impl WebTransportService {
     /// Connects to a server through a WebTransport connection. Needs two closures; one is passed
     /// data, the other is passed updates about the WebTransport's status.
-    pub fn connect(
-        url: &str,
-        on_datagram: RwSignal<Vec<u8>>,
-        on_unidirectional_stream: RwSignal<Option<WebTransportReceiveStream>>,
-        on_bidirectional_stream: RwSignal<Option<WebTransportBidirectionalStream>>,
-        notification: RwSignal<WebTransportStatus>,
-    ) -> Result<WebTransportTask, WebTransportError> {
-        let ConnectCommon(transport, listeners) = Self::connect_common(url, &notification)?;
+    pub fn connect(url: &str) -> Result<WebTransportTask, WebTransportError> {
+        let (datagram, set_datagram) = create_signal(Vec::new());
+        let (status, set_status) = create_signal(WebTransportStatus::Closed);
+        let (unidirectional_stream, set_unidirectional_stream) =
+            create_signal::<Option<WebTransportReceiveStream>>(None);
+        let (bidirectional_stream, set_bidirectional_stream) =
+            create_signal::<Option<WebTransportBidirectionalStream>>(None);
+        let ConnectCommon(transport, listeners) = Self::connect_common(url, &set_status)?;
         let transport = Rc::new(transport);
 
         Self::start_listening_incoming_datagrams(
             transport.clone(),
             transport.datagrams(),
-            on_datagram,
+            set_datagram,
         );
         Self::start_listening_incoming_unidirectional_streams(
             transport.clone(),
             transport.incoming_unidirectional_streams(),
-            on_unidirectional_stream,
+            set_unidirectional_stream,
         );
 
         Self::start_listening_incoming_bidirectional_streams(
             transport.clone(),
             transport.incoming_bidirectional_streams(),
-            on_bidirectional_stream,
+            set_bidirectional_stream,
         );
 
-        Ok(WebTransportTask::new(transport, listeners))
+        Ok(WebTransportTask::new(
+            transport,
+            datagram,
+            unidirectional_stream,
+            bidirectional_stream,
+            status,
+            listeners,
+        ))
     }
 
     fn start_listening_incoming_unidirectional_streams(
         transport: Rc<WebTransport>,
         incoming_streams: ReadableStream,
-        stream_signal: RwSignal<Option<WebTransportReceiveStream>>,
+        stream_signal: WriteSignal<Option<WebTransportReceiveStream>>,
     ) {
         info!("waiting for unidirectional streams");
         let read_result: ReadableStreamDefaultReader =
@@ -188,7 +211,7 @@ impl WebTransportService {
     fn start_listening_incoming_datagrams(
         transport: Rc<WebTransport>,
         datagrams: WebTransportDatagramDuplexStream,
-        closure: RwSignal<Vec<u8>>,
+        closure: WriteSignal<Vec<u8>>,
     ) {
         let incoming_datagrams: ReadableStreamDefaultReader =
             datagrams.readable().get_reader().unchecked_into();
@@ -222,7 +245,7 @@ impl WebTransportService {
     fn start_listening_incoming_bidirectional_streams(
         transport: Rc<WebTransport>,
         streams: ReadableStream,
-        stream_signal: RwSignal<Option<WebTransportBidirectionalStream>>,
+        stream_signal: WriteSignal<Option<WebTransportBidirectionalStream>>,
     ) {
         info!("waiting for bidirectional streams");
         let read_result: ReadableStreamDefaultReader = streams.get_reader().unchecked_into();
@@ -261,7 +284,7 @@ impl WebTransportService {
 
     fn connect_common(
         url: &str,
-        notification: &RwSignal<WebTransportStatus>,
+        notification: &WriteSignal<WebTransportStatus>,
     ) -> Result<ConnectCommon, WebTransportError> {
         let transport = WebTransport::new(url);
         let transport = transport.map_err(|e| {
@@ -291,7 +314,7 @@ impl WebTransportService {
 }
 struct ConnectCommon(WebTransport, [Promise; 2]);
 
-pub fn process_binary(bytes: &Uint8Array, data_signal: &RwSignal<Vec<u8>>) {
+pub fn process_binary(bytes: &Uint8Array, data_signal: &WriteSignal<Vec<u8>>) {
     let data = bytes.to_vec();
     data_signal.update(|x| *x = data);
 }
@@ -351,7 +374,7 @@ impl WebTransportTask {
     pub fn send_bidirectional_stream(
         transport: Rc<WebTransport>,
         data: Vec<u8>,
-        data_signal: RwSignal<Vec<u8>>,
+        data_signal: WriteSignal<Vec<u8>>,
     ) {
         let transport = transport;
         wasm_bindgen_futures::spawn_local(async move {
@@ -429,7 +452,7 @@ impl Drop for WebTransportTask {
 #[cfg(test)]
 mod test {
     use js_sys::Function;
-    use leptos::{create_runtime, create_rw_signal};
+    use leptos::create_runtime;
     use wasm_bindgen::prelude::wasm_bindgen;
     use wasm_bindgen_test::*;
     wasm_bindgen_test_configure!(run_in_browser);
@@ -457,39 +480,13 @@ mod test {
     #[wasm_bindgen_test]
     fn test_webtransport_init() {
         let _runtime = create_runtime();
-        let data: Vec<u8> = Vec::new();
-        let on_datagram = RwSignal::new(data);
-        let on_unidirectional_stream = create_rw_signal::<Option<WebTransportReceiveStream>>(None);
-        let on_bidirectional_stream =
-            create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
-        let notification = create_rw_signal(WebTransportStatus::Closed);
-        let _transport = WebTransportService::connect(
-            "https://transport.rustlemania.com",
-            on_datagram,
-            on_unidirectional_stream,
-            on_bidirectional_stream,
-            notification,
-        )
-        .unwrap();
+        let _transport = WebTransportService::connect("https://transport.rustlemania.com").unwrap();
     }
 
     #[wasm_bindgen_test]
     fn test_webtransport_connect() {
         let _runtime = create_runtime();
-        let data: Vec<u8> = Vec::new();
-        let on_datagram = RwSignal::new(data);
-        let on_unidirectional_stream = create_rw_signal::<Option<WebTransportReceiveStream>>(None);
-        let on_bidirectional_stream =
-            create_rw_signal::<Option<WebTransportBidirectionalStream>>(None);
-        let notification = create_rw_signal(WebTransportStatus::Closed);
-        let _transport = WebTransportService::connect(
-            "https://transport.rustlemania.com",
-            on_datagram,
-            on_unidirectional_stream,
-            on_bidirectional_stream,
-            notification,
-        )
-        .unwrap();
+        let _transport = WebTransportService::connect("https://transport.rustlemania.com").unwrap();
         // TODO: how to wait until we connect?
         // let js_function = Closure::wrap(Box::new(|param: JsValue| {
         //     // This is the body of your JavaScript function
