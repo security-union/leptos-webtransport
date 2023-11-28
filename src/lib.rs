@@ -71,6 +71,8 @@ pub enum WebTransportStatus {
     Opened,
     /// Fired when a WebTransport connection has closed.
     Closed,
+    /// Fired when a WebTransport connection is connecting.
+    Connecting,
     /// Fired when a WebTransport connection has failed.
     Error,
 }
@@ -91,7 +93,8 @@ pub struct WebTransportTask {
     pub unidirectional_stream: ReadSignal<Option<WebTransportReceiveStream>>,
     pub bidirectional_stream: ReadSignal<Option<WebTransportBidirectionalStream>>,
     pub status: ReadSignal<WebTransportStatus>,
-    transport: Rc<WebTransport>,
+    pub set_status: WriteSignal<WebTransportStatus>,
+    pub transport: Rc<WebTransport>,
     #[allow(dead_code)]
     listeners: [Promise; 2],
 }
@@ -103,6 +106,7 @@ impl WebTransportTask {
         unidirectional_stream: ReadSignal<Option<WebTransportReceiveStream>>,
         bidirectional_stream: ReadSignal<Option<WebTransportBidirectionalStream>>,
         status: ReadSignal<WebTransportStatus>,
+        set_status: WriteSignal<WebTransportStatus>,
         listeners: [Promise; 2],
     ) -> WebTransportTask {
         WebTransportTask {
@@ -111,8 +115,14 @@ impl WebTransportTask {
             unidirectional_stream,
             bidirectional_stream,
             status,
+            set_status,
             listeners,
         }
+    }
+
+    pub fn close(&self) {
+        self.transport.close();
+        self.set_status.update(|x| *x = WebTransportStatus::Closed);
     }
 }
 
@@ -162,6 +172,7 @@ impl WebTransportService {
             unidirectional_stream,
             bidirectional_stream,
             status,
+            set_status,
             listeners,
         ))
     }
@@ -284,6 +295,7 @@ impl WebTransportService {
         url: &str,
         notification: &WriteSignal<WebTransportStatus>,
     ) -> Result<ConnectCommon, WebTransportError> {
+        notification.update(|x| *x = WebTransportStatus::Connecting);
         let transport = WebTransport::new(url);
         let transport = transport.map_err(|e| {
             WebTransportError::CreationError(format!("Failed to create WebTransport: {e:?}"))
