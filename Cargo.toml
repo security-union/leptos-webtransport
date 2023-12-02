@@ -8,6 +8,7 @@ homepage = "https://github.com/security-union/leptos-webtransport"
 repository = "https://github.com/security-union/leptos-webtransport"
 license = "MIT"
 readme = "README.md"
+exclude = [ "webdriver.json" ]
 
 [dependencies]
 anyhow = "1.0.75"
