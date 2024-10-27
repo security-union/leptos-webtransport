@@ -1,6 +1,6 @@
 [package]
 name = "leptos_webtransport"
-version = "0.7.6"
+version = "0.6.7"
 authors = ["Griffin Obeid <griffobeid@gmail.com>", "Dario Lencina Talarico dario@securityunion.dev"]
 edition = "2021"
 description = "A Rust crate providing WebTransport functionality for the leptos framework."
